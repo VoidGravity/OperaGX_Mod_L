@@ -1,0 +1,10 @@
+// Create a pixelated, distorted effect with chaotic noise
+uniform shader iChunk;
+
+float glitchStrength = 0.2; // Adjust strength here
+
+vec4 main(vec2 xy) {
+    vec2 offset = noise(xy * 10.0) * glitchStrength;
+    vec4 color = iChunk.eval(xy + offset);
+    return color;
+}

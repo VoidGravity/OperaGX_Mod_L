@@ -1,0 +1,113 @@
+// Currently processed chunk (subregion) of the source image.
+uniform shader iChunk;
+
+// The dimensions of the |iChunk| texture.
+uniform float2 iChunkSize;
+
+// Offset of the chunk, relative to the image origin.
+uniform float2 iChunkOffset;
+
+// The total size of the source image. This may be bigger than the actual
+// chunk size.
+uniform float2 iContentSize;
+
+// Mouse position. BE CAREFUL. The mouse position coords are in content image
+// coordinates space. Depending on what you need, either:
+// - compare them against iContentSize if building an effect that depends on
+//   the mouse position relative to entire content
+// - convert them to chunk coordinates if you want to change the chunk pixels
+//   based on mouse position over the chunk. Keep in mind that mouse position
+//   may be outside the chunk so you need to ignore it in this case!
+uniform float2 iMouse;
+
+float EPSILON = 0.3999999;
+
+half4 RED = half4(1, 0, 0, 1);
+half4 BLUE = half4(0, 0, 1, 1);
+half4 GREEN = half4(0, 1, 0, 1);
+half4 MAGENTA = half4(1, 0, 1, 1);
+half4 YELLOW = half4(1, 1, 0, 1);
+half4 GRAY = half4(0.2, 0.2, 0.2, 1);
+
+bool nearly_equal(float a, float b) {
+  return abs(a - b) < EPSILON;
+}
+
+float2 align(float2 xy) {
+  return xy - 0.5;
+}
+
+float2 content_to_chunk(float2 xy) {
+  return xy - iChunkOffset;
+}
+
+bool within_chunk_bounds(float2 xy) {
+  return xy.x >= 0 && xy.x < iChunkSize.x && xy.y >= 0 && xy.y < iChunkSize.y;
+}
+
+// Dynamic wave distortion effect
+float waveDistortion(float x, float time) {
+  return sin(x * 0.1 + time) * 5.0;
+}
+
+// This example shader:
+//  - draws sharp single line border around the filtered content
+//  - draws colored circle under the mouse - the circle is yellow when the
+//    mouse position is in the left half of the entire content. It turns orange
+//    when mouse crosses the image center to th other half.
+//  - adds dynamic wave distortion to the content
+
+half4 main(float2 xy) {
+  // (1) align pixel center
+  float2 aligned_xy = align(xy);
+
+  // (2) offset the |xy| so it can be compared with |iContentSize|
+  float2 content_xy = aligned_xy + iChunkOffset;
+
+  // Dynamic wave distortion effect
+  content_xy.y += waveDistortion(content_xy.x, iTime);
+
+  // (3) safely compare floats - here - check if we're drawing left border
+  if (nearly_equal(content_xy.x, 0)) {
+    // we're drawing left border
+    return RED;
+  }
+
+  if (nearly_equal(content_xy.x, iContentSize.x - 1)) {
+    // we're drawing right border
+    return BLUE;
+  }
+
+  if (nearly_equal(content_xy.y, 0)) {
+    // we're drawing top border
+    return GREEN;
+  }
+
+  if (nearly_equal(content_xy.y, iContentSize.y - 1)) {
+    // we're drawing bottom border
+    return MAGENTA;
+  }
+
+  half4 color = YELLOW;
+  // (4) - compare mouse position (absolute) to the content size - this is safe
+  // as both values are in that same coordinate space
+  if (iMouse.x > iContentSize.x / 2) {
+    color = GRAY;
+  }
+
+  // (5) we want to draw circle under the mouse cursor therefore we need to
+  // convert absolute mouse position into the relative position inside this particular
+  // chunk.
+  float2 mouse_in_chunk = content_to_chunk(iMouse);
+
+  // (6) check whether mouse position is inside chunk - do not operate on chunk
+  // pixels when the mouse is outside the chunk.
+  if (within_chunk_bounds(mouse_in_chunk)) {
+    float2 tmp = xy - mouse_in_chunk;
+    if (pow(tmp.x, float(2)) + pow(tmp.y, float(2)) < 100) {
+      return color;
+    }
+  }
+
+  return iChunk.eval(xy);
+}
